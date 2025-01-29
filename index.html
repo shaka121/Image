@@ -1,0 +1,122 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Capture</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    video {
+      width: 80%;
+      margin: 20px 0;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Data Capture</h1>
+  <video id="video" autoplay></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <br>
+  <button id="capture">Capture Photo</button>
+  <button id="recordAudio">Record Audio</button>
+  <br>
+  <button id="getLocation">Get Location</button>
+  <p id="location">Location: Not captured yet</p>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const captureButton = document.getElementById('capture');
+    const locationButton = document.getElementById('getLocation');
+    const recordAudioButton = document.getElementById('recordAudio');
+    const locationDisplay = document.getElementById('location');
+
+    // Start Camera
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => console.error("Error accessing camera:", err));
+
+    // Capture Photo
+    captureButton.addEventListener('click', () => {
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = canvas.toDataURL('image/png');
+
+      fetch('http://localhost:3000/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData })
+      })
+      .then(response => response.text())
+      .then(data => console.log(data))
+      .catch(err => console.error("Error sending image:", err));
+    });
+
+    // Record Audio
+    recordAudioButton.addEventListener('click', () => {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          const mediaRecorder = new MediaRecorder(stream);
+          const audioChunks = [];
+          mediaRecorder.start();
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            const formData = new FormData();
+            formData.append('audio', audioBlob);
+
+            fetch('http://localhost:3000/audio', {
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.text())
+            .then(data => console.log(data))
+            .catch(err => console.error("Error sending audio:", err));
+          };
+
+          setTimeout(() => mediaRecorder.stop(), 5000); // Record for 5 seconds
+        })
+        .catch(err => console.error("Error accessing microphone:", err));
+    });
+
+    // Get Location
+    locationButton.addEventListener('click', () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          const { latitude, longitude } = position.coords;
+          locationDisplay.textContent = `Location: Latitude ${latitude}, Longitude ${longitude}`;
+
+          fetch('http://localhost:3000/location', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude, longitude })
+          })
+          .then(response => response.text())
+          .then(data => console.log(data))
+          .catch(err => console.error("Error sending location:", err));
+        });
+      } else {
+        locationDisplay.textContent = "Geolocation is not supported by your browser.";
+      }
+    });
+  </script>
+</body>
+</html>
